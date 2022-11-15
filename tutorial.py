@@ -12,7 +12,9 @@ import covalent as ct
 import torch.nn.functional as F
 
 sns.set_style("ticks")
-
+import os
+cwd = os.getcwd()
+print(cwd)
 class GraphConvNet(nn.Module):
     def __init__(self):
         super(GraphConvNet, self).__init__()
@@ -36,7 +38,7 @@ class GraphConvNet(nn.Module):
         return x
 
 
-@ct.electron(executor="slurm")
+@ct.electron(executor="local")
 def train_single_epoch(train_loader, optimizer, model, loss, property_idx, epoch, device="cpu"):
     batch_loss_list = []
     model.train()
@@ -52,7 +54,7 @@ def train_single_epoch(train_loader, optimizer, model, loss, property_idx, epoch
         batch_loss_list.append(batch_loss.item())
     return model, optimizer, np.mean(batch_loss_list)
 
-@ct.electron(executor="slurm")
+@ct.electron(executor="local")
 def validation(val_loader, model, loss, property_idx):
     batch_loss_list = []
     model.eval()
@@ -63,7 +65,7 @@ def validation(val_loader, model, loss, property_idx):
         batch_loss_list.append(batch_loss.item())
     return np.mean(batch_loss_list)
 
-@ct.electron(executor="slurm")
+@ct.electron(executor="local")
 def test(test_loader, model, loss, property_idx):
     model.eval()
     true_values = []
@@ -82,7 +84,7 @@ def test(test_loader, model, loss, property_idx):
     predictions = np.concatenate(predictions)
     return np.mean(batch_loss_list), true_values, predictions
 
-@ct.electron(executor="slurm")
+@ct.electron(executor="local")
 def train_model(train_loader, val_loader, model, loss, n_epochs, property_idx):
     train_loss_list = []
     val_loss_list = []
@@ -98,7 +100,7 @@ def train_model(train_loader, val_loader, model, loss, n_epochs, property_idx):
 
 def workflow(model, n_epochs = 20, train_size = 80, property_idx = 4):
     loss = F.mse_loss
-    dataset = QM9("/Users/inepp/Research/covalent_tutorial")
+    dataset = QM9(cwd)
     print("Len dataset: ", len(dataset))
     n_train = int(train_size*len(dataset)/100)
     n_val = int((100-train_size)*len(dataset)/200)
@@ -107,39 +109,25 @@ def workflow(model, n_epochs = 20, train_size = 80, property_idx = 4):
     train_loader = DataLoader(train_set, batch_size=32, shuffle=True)
     val_loader = DataLoader(validation_set, batch_size=32, shuffle=True)
     test_loader = DataLoader(test_set, batch_size=32, shuffle=True)
-    print(dataset[0].x.shape)
-#    # print(dataset[0].edge_attr.shape)
-   # num_atomic_features = dataset[0].x.shape[1]
-   # num_bond_features = dataset[0].edge_attr.shape[1]
-   # model = net(num_atomic_features, num_bond_features)
+# #    # print(dataset[0].edge_attr.shape)
+#     num_atomic_features = dataset[0].x.shape[1]
+#     num_bond_features = dataset[0].edge_attr.shape[1]
+#     model = net(num_atomic_features, num_bond_features)
     model, optimizer, train_loss_list, val_loss_list = train_model(train_loader, val_loader, model, loss, n_epochs, property_idx)
     test_loss, true_values, predictions = test(test_loader, model, loss, property_idx)
     return train_loss_list, val_loss_list, test_loss, true_values, predictions
 
-    
-#     
-#     return train_loss_list, val_loss_list, test_loss, true_values, predictions, n_epochs
-
-
-#train_loss_list, val_loss_list, test_loss, true_values, predictions = workflow(net=GraphConvNet, n_epochs=20)
-# print(ct.get_config())
-# def filter_func(data, max_atoms = 12):
-#     if data.z.shape[0] > max_atoms:
-#         return False
-#     return True
-
-# dataset = QM9("/Users/inepp/Research/covalent_tutorial", pre_filter=filter_func)
 
 n_epochs = 20
-workflow = ct.lattice(workflow, executor="slurm")
+workflow = ct.lattice(workflow, executor="local")
 
 dispatch_id = ct.dispatch(workflow)(model=GraphConvNet().to("cpu"), n_epochs=n_epochs)
 print(f"Dispatch id: {dispatch_id}")
 results = ct.get_result(dispatch_id=dispatch_id, wait=True)
 print(f"Covalent workflow takes {results.end_time - results.start_time} seconds.")
-print(results.result)
+#print(results.result)
 train_loss_list, val_loss_list, test_loss, true_values, predictions = results.result
-print(train_loss_list)
+#print(train_loss_list)
 
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 5))
 # Plot training curves 
@@ -152,8 +140,11 @@ ax1.set_xlabel("Epochs")
 ax1.legend()
 # Plot Predictions vs True valuses
 ax2.scatter(true_values, predictions, alpha=0.7, label=f"Test set MSE: {test_loss:.3f} eV$^2$")
+ax2.axline((1, 1), slope=1)
 ax2.set_title("Test set predictions")
 ax2.set_xlabel("HOMO-LUMO gap, eV")
 ax2.set_ylabel("Predicted HOMO-LUMO gap, eV")
+ax2.set_xlim([1, 11])
+ax2.set_ylim([1, 11])
 ax2.legend()
 fig.savefig('results.png', dpi=fig.dpi)
