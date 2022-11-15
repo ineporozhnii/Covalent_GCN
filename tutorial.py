@@ -10,11 +10,10 @@ from torch_geometric.nn import global_add_pool as gap
 import matplotlib.pyplot as plt
 import covalent as ct
 import torch.nn.functional as F
-
-sns.set_style("ticks")
 import os
-cwd = os.getcwd()
-print(cwd)
+sns.set_style("ticks")
+
+
 class GraphConvNet(nn.Module):
     def __init__(self):
         super(GraphConvNet, self).__init__()
@@ -100,6 +99,7 @@ def train_model(train_loader, val_loader, model, loss, n_epochs, property_idx):
 
 def workflow(model, n_epochs = 20, train_size = 80, property_idx = 4):
     loss = F.mse_loss
+    cwd = os.getcwd()
     dataset = QM9(cwd)
     print("Len dataset: ", len(dataset))
     n_train = int(train_size*len(dataset)/100)
